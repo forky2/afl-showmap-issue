@@ -53,20 +53,20 @@ make musl-x86_64-run-good
 
 ```
 $ make musl-x86_64-run-bad
-AFL_DEBUG_CHILD=1 AFL_DEBUG=1 afl-showmap -o .traces -Q -I .filelist.1 -- ./musl-x86_64 @@ </dev/null
+AFL_DEBUG_CHILD=1 AFL_DEBUG=1 AFL_ENTRYPOINT=`afl-qemu-trace ./musl-x86_64` afl-showmap -o .traces -Q -I .filelist.1 -- ./musl-x86_64 @@ </dev/null
 [D] DEBUG:  afl-showmap -o .traces -Q -I .filelist.1 -- ./musl-x86_64 @@
 afl-showmap++4.08a by Michal Zalewski
 [*] Executing './musl-x86_64'...
 [+] Enabled environment variable AFL_DEBUG_CHILD with value 1
 [*] Spinning up the fork server...
-AFL forkserver entrypoint: 0x401038
+AFL forkserver entrypoint: 0x40115f
 Debug: Sending status c201ffff
 [+] All right - fork server is up.
 [*] Extended forkserver functions received (c201ffff).
 [*] Target map size: 65536
 [*] Reading from file list '.filelist.1'...
 [+] Enabled environment variable AFL_DEBUG with value 1
-[D] DEBUG: /home/forky2/projects/afl/afl-qemu-trace: "./musl-x86_64" "/home/forky2/projects/afl-issue/./.afl-showmap-temp-167744"
+[D] DEBUG: /home/forky2/projects/afl/afl-qemu-trace: "./musl-x86_64" "/home/forky2/projects/afl-issue/./.afl-showmap-temp-170602"
 [*] Reading from '.filelist.1'...
 Getting coverage for 'in/ok'
 -- Program output begins --
@@ -79,20 +79,29 @@ Getting coverage for 'in/ok'
 -- Program output ends --
 Getting coverage for 'in/sigabrt'
 -- Program output begins --
+-- Program output ends --
+Getting coverage for 'in/ok'
+-- Program output begins --
 qemu: uncaught target signal 6 (Aborted) - core dumped
 -- Program output ends --
 
 +++ Program killed by signal 6 +++
-[!] WARNING: crashed: in/sigabrt
+[!] WARNING: crashed: in/ok
 Getting coverage for 'in/ok'
 -- Program output begins --
+qemu: uncaught target signal 6 (Aborted) - core dumped
 -- Program output ends --
+
++++ Program killed by signal 6 +++
+[!] WARNING: crashed: in/ok
 Getting coverage for 'in/ok'
 -- Program output begins --
+qemu: uncaught target signal 6 (Aborted) - core dumped
 -- Program output ends --
-Getting coverage for 'in/ok'
--- Program output begins --
--- Program output ends --
+
++++ Program killed by signal 6 +++
+[!] WARNING: crashed: in/ok
 [+] Processed 7 input files.
-[+] Captured 216 tuples (map size 65536, highest value 6, total values 1642) in '.traces'.
+[+] Captured 1 tuples (map size 65536, highest value 3, total values 691) in '.traces'.
+make: *** [Makefile:19: musl-x86_64-run-bad] Error 2
 ```
