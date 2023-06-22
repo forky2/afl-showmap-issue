@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 void process(uint8_t state)
 {
@@ -16,10 +18,12 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        printf("%x\n", main);
+        printf("AFL_ENTRYPOINT %llx\n",  (unsigned long long) main);
         return 1;
     }
-    
+
+    printf("Guest process believes PID: %d TID: %d\n", getpid(), gettid());
+
     char *filename = argv[1];
     FILE *f = fopen(filename, "r");
     if (!f)

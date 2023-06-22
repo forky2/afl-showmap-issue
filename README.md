@@ -1,16 +1,43 @@
 # Issue
 
-It appears that binaries compiled with musl break afl-qemu-trace forkserver
-behaviour.
+Binaries compiled with musl break afl-qemu-trace forkserver behaviour.
 
 When a target static musl binary is run with AFL_ENTRYPOINT defined,
-all non-crashing test inputs will all produce a crash after a crashing test
-input is run. This would suggest that something between _start() and main()
-is causing an issue for the forkserver.
+all non-crashing test inputs will produce a crash after a crashing test
+input is run.
 
-## AFLplusplus
+## Cause
 
-This issue is tested against AFLplusplus dev branch. AFLplusplus is compiled
+Unlike GLIBC which will always make a syscall to gettid for its TID, musl
+caches a thread's TID in the TLS. This is fine for normal fork operations as
+musl will update the TLS after the fork with a syscall to gettid. However,
+in the magical case where QEMU is forking the process unbeknownst to the guest
+process, the child process will keep an invalid TID and use it in calls such as
+`tkill(int tid, int sig)`.
+
+## Remediation
+
+Whilst we might prefer that musl had not implemented its TID recording in this
+way I don't think this is a musl bug. I propose that the syscall translation in
+qemuafl modifies such spurious syscalls so that they behave as intended.
+
+By way of example:
+* Say the QEMU forkserver parent TID is 10 just before forking.
+* And the QEMU forkserver child TID is 15 just after forking.
+* Keep these two values in globals so that when a call to __safe_tkill() is made
+  * the value of arg1 is compared to parent TID.
+  * if and only if they are equal, arg1 is replaced with the recorded value of
+    child TID.
+
+I have done a proof of concept of this which is successful at resolving the
+issue, but it is a bit messy.
+
+I've only tested a fix for tkill in linux-user. I've not done it for other
+syscalls that take a TID nor have I looked into bsd-user.
+
+## Testing baseline
+
+This issue was tested against AFLplusplus dev branch. AFLplusplus is compiled
 with:
 
 ```
@@ -53,7 +80,7 @@ make musl-x86_64-run-good
 
 ```
 $ make musl-x86_64-run-bad
-AFL_DEBUG_CHILD=1 AFL_DEBUG=1 AFL_ENTRYPOINT=`afl-qemu-trace ./musl-x86_64` afl-showmap -o .traces -Q -I .filelist.1 -- ./musl-x86_64 @@ </dev/null
+AFL_DEBUG_CHILD=1 AFL_DEBUG=1 AFL_ENTRYPOINT=`afl-qemu-trace ./musl-x86_64 | grep AFL_ENTRYPOINT | cut -d " " -f 2` afl-showmap -o .traces -Q -I .filelist.1 -- ./musl-x86_64 @@ </dev/null
 [D] DEBUG:  afl-showmap -o .traces -Q -I .filelist.1 -- ./musl-x86_64 @@
 afl-showmap++4.08a by Michal Zalewski
 [*] Executing './musl-x86_64'...
@@ -66,19 +93,23 @@ Debug: Sending status c201ffff
 [*] Target map size: 65536
 [*] Reading from file list '.filelist.1'...
 [+] Enabled environment variable AFL_DEBUG with value 1
-[D] DEBUG: /home/forky2/projects/afl/afl-qemu-trace: "./musl-x86_64" "/home/forky2/projects/afl-issue/./.afl-showmap-temp-170602"
+[D] DEBUG: /home/forky2/projects/afl/afl-qemu-trace: "./musl-x86_64" "/home/forky2/projects/afl-issue/./.afl-showmap-temp-798707"
 [*] Reading from '.filelist.1'...
 Getting coverage for 'in/ok'
 -- Program output begins --
+Guest process believes PID: 798710 TID: 798708
 -- Program output ends --
 Getting coverage for 'in/ok'
 -- Program output begins --
+Guest process believes PID: 798711 TID: 798708
 -- Program output ends --
 Getting coverage for 'in/ok'
 -- Program output begins --
+Guest process believes PID: 798712 TID: 798708
 -- Program output ends --
 Getting coverage for 'in/sigabrt'
 -- Program output begins --
+Guest process believes PID: 798713 TID: 798708
 -- Program output ends --
 Getting coverage for 'in/ok'
 -- Program output begins --
@@ -102,6 +133,6 @@ qemu: uncaught target signal 6 (Aborted) - core dumped
 +++ Program killed by signal 6 +++
 [!] WARNING: crashed: in/ok
 [+] Processed 7 input files.
-[+] Captured 1 tuples (map size 65536, highest value 3, total values 691) in '.traces'.
+[+] Captured 1 tuples (map size 65536, highest value 5, total values 1611) in '.traces'.
 make: *** [Makefile:19: musl-x86_64-run-bad] Error 2
 ```
